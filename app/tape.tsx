@@ -17,11 +17,7 @@ export default function TapeRoute() {
         clearTape();
         router.back();
       }}
-      onConfirmed={async (next) => {
-        await replace(next);
-        clearTape();
-        router.back();
-      }}
+      onConfirmed={replace}
     />
   );
 }

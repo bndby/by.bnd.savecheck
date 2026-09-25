@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useNavigation } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Button, Text, TextInput } from "react-native-paper";
 import {
@@ -12,6 +13,7 @@ import {
   setReceiptDate,
   setReconciliation,
 } from "./ledger";
+import { clearTape } from "./pendingTape";
 import { confirmRefusalText, saveFailedText } from "./refusalText";
 
 type DraftLine = {
@@ -123,10 +125,36 @@ export function TapeScreen({
   onDiscardShot: (shot: string) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => (initial ? draftFromTape(initial) : emptyDraft));
-  const [shot, setShot] = useState<string | null>(initial?.shot ?? null);
-  const kept = useRef(false);
+  const [shot] = useState<string | null>(initial?.shot ?? null);
+  const retainShot = useRef(false);
+  const savingRef = useRef(false);
+  const leaving = useRef(false);
+  const shotRef = useRef(shot);
+  const discardRef = useRef(onDiscardShot);
+  shotRef.current = shot;
+  discardRef.current = onDiscardShot;
+  const navigation = useNavigation();
   const [refusal, setRefusal] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  function markSaving(next: boolean) {
+    savingRef.current = next;
+    setSaving(next);
+  }
+
+  useEffect(() => {
+    return navigation.addListener("beforeRemove", (event) => {
+      if (savingRef.current && !leaving.current) {
+        event.preventDefault();
+        return;
+      }
+      clearTape();
+      const file = shotRef.current;
+      if (!retainShot.current && file !== null) {
+        discardRef.current(file);
+      }
+    });
+  }, [navigation]);
   const tape = projectTape(
     ledger,
     draft.date,
@@ -236,30 +264,25 @@ export function TapeScreen({
             setRefusal(confirmRefusalText[result.refusal]);
             return;
           }
-          if (result === ledger && shot !== null) {
-            onDiscardShot(shot);
-            setShot(null);
-          } else {
-            kept.current = true;
-          }
-          setSaving(true);
-          void Promise.resolve(onConfirmed(result)).catch(() => {
-            kept.current = false;
-            setRefusal(saveFailedText);
-            setSaving(false);
-          });
+          retainShot.current = result !== ledger;
+          markSaving(true);
+          void Promise.resolve(onConfirmed(result))
+            .then(() => {
+              leaving.current = true;
+              onLeave();
+            })
+            .catch(() => {
+              retainShot.current = false;
+              markSaving(false);
+              setRefusal(saveFailedText);
+            });
         }}
       >
         Подтвердить
       </Button>
       <Button
         disabled={saving}
-        onPress={() => {
-          if (shot !== null && !kept.current) {
-            onDiscardShot(shot);
-          }
-          onLeave();
-        }}
+        onPress={onLeave}
       >
         К месяцу
       </Button>

@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { Text } from "react-native-paper";
 import { Ledger } from "./ledger";
 import { loadLedger, saveLedger } from "./ledgerStore";
+import { peekTape } from "./pendingTape";
+import { discardShotsExcept } from "./shotFile";
 
 type LedgerContextValue = {
   ledger: Ledger;
@@ -23,9 +25,26 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const [problem, setProblem] = useState<string | null>(null);
 
   useEffect(() => {
+    let active = true;
     loadLedger()
-      .then(setLedger)
-      .catch(() => setProblem("Не удалось открыть учёт"));
+      .then((loaded) => {
+        if (!active) {
+          return;
+        }
+        discardShotsExcept([
+          ...loaded.receipts.map((receipt) => receipt.shot),
+          peekTape()?.shot ?? null,
+        ]);
+        setLedger(loaded);
+      })
+      .catch(() => {
+        if (active) {
+          setProblem("Не удалось открыть учёт");
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   if (problem !== null) {
