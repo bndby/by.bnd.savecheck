@@ -33,17 +33,70 @@ export type Spend = {
   date: string;
 };
 
+export type ReceiptLine = {
+  name: string;
+  amount: number;
+  category: string;
+};
+
+export type Receipt = {
+  date: string;
+  lines: readonly ReceiptLine[];
+};
+
 export type Ledger = {
   categories: readonly string[];
-  spends: readonly Spend[];
+  receipts: readonly Receipt[];
 };
 
 export function createLedger(): Ledger {
-  return { categories: starterCategories, spends: [] };
+  return { categories: starterCategories, receipts: [] };
 }
 
 export function listCategories(ledger: Ledger): readonly string[] {
   return ledger.categories;
+}
+
+export function addCategory(ledger: Ledger, name: string): Ledger {
+  return { ...ledger, categories: [...ledger.categories, name] };
+}
+
+export type CategoryRefusal = {
+  refusal: "protected-category" | "category-has-spends";
+};
+
+function isProtectedCategory(name: string): boolean {
+  return name === "прочее";
+}
+
+export function removeCategory(ledger: Ledger, name: string): Ledger | CategoryRefusal {
+  if (isProtectedCategory(name)) {
+    return { refusal: "protected-category" };
+  }
+  if (ledger.receipts.some((receipt) => receipt.lines.some((line) => line.category === name))) {
+    return { refusal: "category-has-spends" };
+  }
+  return { ...ledger, categories: ledger.categories.filter((category) => category !== name) };
+}
+
+export function renameCategory(
+  ledger: Ledger,
+  name: string,
+  nextName: string,
+): Ledger | CategoryRefusal {
+  if (isProtectedCategory(name)) {
+    return { refusal: "protected-category" };
+  }
+  return {
+    ...ledger,
+    categories: ledger.categories.map((category) => (category === name ? nextName : category)),
+    receipts: ledger.receipts.map((receipt) => ({
+      ...receipt,
+      lines: receipt.lines.map((line) =>
+        line.category === name ? { ...line, category: nextName } : line,
+      ),
+    })),
+  };
 }
 
 export type LineInput = {
@@ -88,7 +141,7 @@ export function applyHint(ledger: Ledger, tape: Tape): Tape {
         return line;
       }
       const key = hintKey(line.name);
-      const match = [...ledger.spends].reverse().find((spend) => hintKey(spend.name) === key);
+      const match = [...listSpends(ledger)].reverse().find((spend) => hintKey(spend.name) === key);
       return { ...line, category: match?.category ?? "прочее" };
     }),
   };
@@ -142,8 +195,35 @@ export function setReconciliation(
   };
 }
 
+export function listReceipts(ledger: Ledger): readonly Receipt[] {
+  return ledger.receipts;
+}
+
 export function listSpends(ledger: Ledger): readonly Spend[] {
-  return ledger.spends;
+  return ledger.receipts.flatMap((receipt) =>
+    receipt.lines.map((line) => ({
+      name: line.name,
+      amount: line.amount,
+      category: line.category,
+      date: receipt.date,
+    })),
+  );
+}
+
+function positionKey(name: string, amount: number): string {
+  return `${hintKey(name)}\u0000${cents(amount)}`;
+}
+
+function sameReceipt(receipt: Receipt, date: string, lines: readonly ReceiptLine[]): boolean {
+  if (receipt.date !== date) {
+    return false;
+  }
+  const known = receipt.lines.map((line) => positionKey(line.name, line.amount)).sort();
+  const incoming = lines.map((line) => positionKey(line.name, line.amount)).sort();
+  if (known.length !== incoming.length) {
+    return false;
+  }
+  return known.every((key, index) => key === incoming[index]);
 }
 
 export type ConfirmRefusal = {
@@ -176,17 +256,95 @@ export function confirmTape(ledger: Ledger, tape: Tape): Ledger | ConfirmRefusal
     return { refusal: "missing-category" };
   }
   const date = tape.date;
+  const lines = tape.lines.map((line) => ({
+    name: line.name,
+    amount: line.amount ?? 0,
+    category: line.category ?? "",
+  }));
+  const existing = ledger.receipts.find((receipt) => sameReceipt(receipt, date, lines));
+  if (existing) {
+    return ledger;
+  }
+  return { ...ledger, receipts: [...ledger.receipts, { date, lines }] };
+}
+
+export type LineCorrection = {
+  name?: string;
+  amount?: number;
+  category?: string;
+};
+
+export function correctLine(
+  ledger: Ledger,
+  receiptIndex: number,
+  lineIndex: number,
+  correction: LineCorrection,
+): Ledger | ConfirmRefusal {
+  if (correction.name !== undefined && correction.name.trim() === "") {
+    return { refusal: "missing-name" };
+  }
+  if (correction.amount !== undefined && correction.amount < 0) {
+    return { refusal: "negative-amount" };
+  }
+  if (correction.category !== undefined && !knownCategory(ledger, correction.category)) {
+    return { refusal: "missing-category" };
+  }
   return {
     ...ledger,
-    spends: [
-      ...ledger.spends,
-      ...tape.lines.map((line) => ({
-        name: line.name,
-        amount: line.amount ?? 0,
-        category: line.category ?? "",
-        date,
-      })),
-    ],
+    receipts: ledger.receipts.map((receipt, index) => {
+      if (index !== receiptIndex) {
+        return receipt;
+      }
+      return {
+        ...receipt,
+        lines: receipt.lines.map((line, indexInReceipt) => {
+          if (indexInReceipt !== lineIndex) {
+            return line;
+          }
+          return {
+            name: correction.name ?? line.name,
+            amount: correction.amount ?? line.amount,
+            category: correction.category ?? line.category,
+          };
+        }),
+      };
+    }),
+  };
+}
+
+export function removeLine(ledger: Ledger, receiptIndex: number, lineIndex: number): Ledger {
+  return {
+    ...ledger,
+    receipts: ledger.receipts.flatMap((receipt, index) => {
+      if (index !== receiptIndex) {
+        return [receipt];
+      }
+      const lines = receipt.lines.filter((_, indexInReceipt) => indexInReceipt !== lineIndex);
+      return lines.length === 0 ? [] : [{ ...receipt, lines }];
+    }),
+  };
+}
+
+export function removeReceipt(ledger: Ledger, receiptIndex: number): Ledger {
+  return {
+    ...ledger,
+    receipts: ledger.receipts.filter((_, index) => index !== receiptIndex),
+  };
+}
+
+export function correctReceiptDate(
+  ledger: Ledger,
+  receiptIndex: number,
+  date: string,
+): Ledger | ConfirmRefusal {
+  if (date.trim() === "") {
+    return { refusal: "missing-date" };
+  }
+  return {
+    ...ledger,
+    receipts: ledger.receipts.map((receipt, index) =>
+      index === receiptIndex ? { ...receipt, date } : receipt,
+    ),
   };
 }
 
@@ -211,7 +369,7 @@ export function openMonth(
   if (monthIndex(month) > monthIndex(today)) {
     return { refusal: "future-month" };
   }
-  const spends = ledger.spends.filter((spend) => sameMonth(spend.date, month));
+  const spends = listSpends(ledger).filter((spend) => sameMonth(spend.date, month));
   const categories = ledger.categories
     .map((name) => ({
       name,
