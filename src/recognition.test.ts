@@ -79,7 +79,7 @@ test("файл кадра без обрезки кладёт строки на �
       },
     },
   );
-  const shot = placeShot(createLedger(), lines);
+  const shot = placeShot(createLedger(), lines, "file:///receipt.jpg");
   if ("refusal" in shot || "opened" in shot) {
     throw new Error("opened" in shot ? "opened" : shot.refusal);
   }

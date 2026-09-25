@@ -607,6 +607,7 @@ test("та же дата и тот же набор позиций открыва
   expect(listReceipts(second)).toEqual([
     {
       date: "2026-09-02",
+      shot: null,
       lines: [
         { name: "Молоко", amount: 3, category: "продукты" },
         { name: "Хлеб", amount: 2, category: "продукты" },
@@ -718,10 +719,12 @@ test("другой набор позиций создаёт другой чек"
   expect(listReceipts(second)).toEqual([
     {
       date: "2026-09-02",
+      shot: null,
       lines: [{ name: "Молоко", amount: 3, category: "продукты" }],
     },
     {
       date: "2026-09-02",
+      shot: null,
       lines: [
         { name: "Молоко", amount: 3, category: "продукты" },
         { name: "Хлеб", amount: 2, category: "продукты" },
@@ -949,6 +952,7 @@ test("одну позицию можно удалить, остальные тр
   expect(listReceipts(remaining)).toEqual([
     {
       date: "2026-09-02",
+      shot: null,
       lines: [{ name: "Хлеб", amount: 2, category: "продукты" }],
     },
   ]);
@@ -1052,7 +1056,7 @@ test("один кадр кладёт строки на ленту", () => {
     "Молоко 3,20",
     "Хлеб 2,10",
     "25.09.2026 14:32",
-  ]);
+  ], "file:///shot.jpg");
   if ("refusal" in shot || "opened" in shot) {
     throw new Error("opened" in shot ? "opened" : shot.refusal);
   }
@@ -1065,7 +1069,11 @@ test("один кадр кладёт строки на ленту", () => {
 });
 
 test("пустой разбор оставляет пустую ленту", () => {
-  const shot = placeShot(createLedger(), ["Платежный документ", "УНП 190000000"]);
+  const shot = placeShot(
+    createLedger(),
+    ["Платежный документ", "УНП 190000000"],
+    "file:///shot.jpg",
+  );
   if ("refusal" in shot || "opened" in shot) {
     throw new Error("opened" in shot ? "opened" : shot.refusal);
   }
@@ -1083,11 +1091,15 @@ test("несколько чеков в кадре просят переснят�
     "Молоко 3,20",
     "Платежный документ",
     "Хлеб 2,10",
-  ]);
+  ], "file:///shot.jpg");
 
   expect(mixed).toEqual({ refusal: "several-receipts" });
 
-  const again = placeShot(ledger, ["Платежный документ", "Хлеб 2,10", "25.09.2026"]);
+  const again = placeShot(
+    ledger,
+    ["Платежный документ", "Хлеб 2,10", "25.09.2026"],
+    "file:///shot.jpg",
+  );
   if ("refusal" in again || "opened" in again) {
     throw new Error("opened" in again ? "opened" : again.refusal);
   }
@@ -1118,7 +1130,7 @@ test("повторный снимок того же чека открывает 
     "  хлеб  2,10",
     "МОЛОКО 3,20",
     "25.09.2026",
-  ]);
+  ], "file:///shot.jpg");
 
   expect(shot).toEqual({ opened: listReceipts(confirmed)[0] });
   expect(listSpends(confirmed)).toEqual([
@@ -1135,7 +1147,7 @@ test("итог чека и скидка на чек остаются сверк�
     "СКИДКА НА ИТОГ 0,50",
     "ИТОГО К ОПЛАТЕ 4,80",
     "25.09.2026",
-  ]);
+  ], "file:///shot.jpg");
   if ("refusal" in shot || "opened" in shot) {
     throw new Error("opened" in shot ? "opened" : shot.refusal);
   }
@@ -1146,13 +1158,69 @@ test("итог чека и скидка на чек остаются сверк�
   expect(shot.lines.map((line) => line.amount)).toEqual([3.2, 2.1]);
 });
 
+test("снимок остаётся на чеке, а хвост дописывается на той же ленте", () => {
+  const shot = placeShot(
+    createLedger(),
+    ["Молоко 3,20", "25.09.2026"],
+    "file:///shots/1.jpg",
+  );
+  if ("refusal" in shot || "opened" in shot) {
+    throw new Error("opened" in shot ? "opened" : shot.refusal);
+  }
+
+  const confirmed = confirmTape(
+    createLedger(),
+    addLine(shot, { name: "Хлеб", sale: 2.1, category: "продукты" }),
+  );
+  if ("refusal" in confirmed) {
+    throw new Error(confirmed.refusal);
+  }
+
+  expect(listReceipts(confirmed)).toEqual([
+    {
+      date: "2026-09-25",
+      shot: "file:///shots/1.jpg",
+      lines: [
+        { name: "Молоко", amount: 3.2, category: "прочее" },
+        { name: "Хлеб", amount: 2.1, category: "продукты" },
+      ],
+    },
+  ]);
+});
+
+test("повторный снимок не подменяет файл уже подтверждённого чека", () => {
+  const shot = placeShot(
+    createLedger(),
+    ["Молоко 3,20", "25.09.2026"],
+    "file:///shots/1.jpg",
+  );
+  if ("refusal" in shot || "opened" in shot) {
+    throw new Error("opened" in shot ? "opened" : shot.refusal);
+  }
+  const confirmed = confirmTape(createLedger(), shot);
+  if ("refusal" in confirmed) {
+    throw new Error(confirmed.refusal);
+  }
+
+  const again = placeShot(confirmed, ["МОЛОКО 3,20", "25.09.2026"], "file:///shots/2.jpg");
+
+  expect(again).toEqual({ opened: listReceipts(confirmed)[0] });
+  expect(listReceipts(confirmed)).toEqual([
+    {
+      date: "2026-09-25",
+      shot: "file:///shots/1.jpg",
+      lines: [{ name: "Молоко", amount: 3.2, category: "прочее" }],
+    },
+  ]);
+});
+
 test("скидка и надбавка строки входят в сумму позиции", () => {
   const shot = placeShot(createLedger(), [
     "Молоко 3,20",
     "Скидка 0,20",
     "Надбавка 0,10",
     "25.09.2026",
-  ]);
+  ], "file:///shot.jpg");
   if ("refusal" in shot || "opened" in shot) {
     throw new Error("opened" in shot ? "opened" : shot.refusal);
   }

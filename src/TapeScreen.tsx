@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Button, Text, TextInput } from "react-native-paper";
 import {
   Ledger,
+  Tape,
   addLine,
   applyHint,
   confirmTape,
@@ -42,12 +43,20 @@ function parseAmount(text: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+type Draft = {
+  date: string;
+  lines: DraftLine[];
+  receiptTotal: string;
+  receiptDiscount: string;
+};
+
 function projectTape(
   ledger: Ledger,
   date: string,
   lines: DraftLine[],
   receiptTotal: string,
   receiptDiscount: string,
+  shot: string | null,
 ) {
   const withLines = lines.reduce(
     (tape, line) =>
@@ -61,20 +70,39 @@ function projectTape(
       }),
     setReceiptDate(openTape(), date.trim() === "" ? null : date.trim()),
   );
-  return applyHint(
-    ledger,
-    setReconciliation(withLines, {
-      receiptTotal: parseAmount(receiptTotal),
-      receiptDiscount: parseAmount(receiptDiscount),
-    }),
-  );
+  return {
+    ...applyHint(
+      ledger,
+      setReconciliation(withLines, {
+        receiptTotal: parseAmount(receiptTotal),
+        receiptDiscount: parseAmount(receiptDiscount),
+      }),
+    ),
+    shot,
+  };
 }
 
-type Draft = {
-  date: string;
-  lines: DraftLine[];
-  receiptTotal: string;
-  receiptDiscount: string;
+function draftFromTape(tape: Tape): Draft {
+  return {
+    date: tape.date ?? "",
+    lines: tape.lines.map((line) => ({
+      name: line.name,
+      sale: line.sale === null ? "" : String(line.sale),
+      discount: line.discount === 0 ? "" : String(line.discount),
+      surcharge: line.surcharge === 0 ? "" : String(line.surcharge),
+      currency: line.currency,
+      category: line.category,
+    })),
+    receiptTotal: tape.receiptTotal === null ? "" : String(tape.receiptTotal),
+    receiptDiscount: tape.receiptDiscount === null ? "" : String(tape.receiptDiscount),
+  };
+}
+
+const emptyDraft: Draft = {
+  date: "",
+  lines: [],
+  receiptTotal: "",
+  receiptDiscount: "",
 };
 
 function money(amount: number | null): string {
@@ -83,19 +111,20 @@ function money(amount: number | null): string {
 
 export function TapeScreen({
   ledger,
+  initial = null,
   onLeave,
   onConfirmed,
+  onDiscardShot,
 }: {
   ledger: Ledger;
+  initial?: Tape | null;
   onLeave: () => void;
   onConfirmed: (ledger: Ledger) => void | Promise<void>;
+  onDiscardShot: (shot: string) => void;
 }) {
-  const [draft, setDraft] = useState<Draft>({
-    date: "",
-    lines: [],
-    receiptTotal: "",
-    receiptDiscount: "",
-  });
+  const [draft, setDraft] = useState<Draft>(() => (initial ? draftFromTape(initial) : emptyDraft));
+  const [shot, setShot] = useState<string | null>(initial?.shot ?? null);
+  const kept = useRef(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const tape = projectTape(
@@ -104,6 +133,7 @@ export function TapeScreen({
     draft.lines,
     draft.receiptTotal,
     draft.receiptDiscount,
+    shot,
   );
   const categories = listCategories(ledger);
   const positionSum =
@@ -206,8 +236,15 @@ export function TapeScreen({
             setRefusal(confirmRefusalText[result.refusal]);
             return;
           }
+          if (result === ledger && shot !== null) {
+            onDiscardShot(shot);
+            setShot(null);
+          } else {
+            kept.current = true;
+          }
           setSaving(true);
           void Promise.resolve(onConfirmed(result)).catch(() => {
+            kept.current = false;
             setRefusal(saveFailedText);
             setSaving(false);
           });
@@ -215,7 +252,17 @@ export function TapeScreen({
       >
         Подтвердить
       </Button>
-      <Button onPress={onLeave}>К месяцу</Button>
+      <Button
+        disabled={saving}
+        onPress={() => {
+          if (shot !== null && !kept.current) {
+            onDiscardShot(shot);
+          }
+          onLeave();
+        }}
+      >
+        К месяцу
+      </Button>
     </ScrollView>
   );
 }

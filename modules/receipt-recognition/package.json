@@ -1,0 +1,12 @@
+{
+  "name": "receipt-recognition",
+  "version": "1.0.0",
+  "description": "Читает строки чека на телефоне",
+  "license": "MIT",
+  "main": "src/index.ts",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

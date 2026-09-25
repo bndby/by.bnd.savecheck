@@ -35,11 +35,13 @@ function byn(amount: number): string {
 export function MonthScreen({
   ledger,
   onWrite,
+  onShoot,
   onCategories,
   onOpenReceipt,
 }: {
   ledger: Ledger;
   onWrite: () => void;
+  onShoot: () => void;
   onCategories: () => void;
   onOpenReceipt: (index: number) => void;
 }) {
@@ -71,7 +73,10 @@ export function MonthScreen({
           {receipt.date} {byn(receipt.total)}
         </Button>
       ))}
-      <Button mode="contained" onPress={onWrite}>
+      <Button mode="contained" onPress={onShoot}>
+        Снять чек
+      </Button>
+      <Button mode="outlined" onPress={onWrite}>
         Вписать чек
       </Button>
       <Button mode="outlined" onPress={onCategories}>

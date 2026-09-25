@@ -2,7 +2,7 @@ import * as SQLite from "expo-sqlite";
 import { Ledger, createLedger } from "./ledger";
 
 type CategoryRow = { name: string };
-type ReceiptRow = { id: number; date: string };
+type ReceiptRow = { id: number; date: string; shot: string | null };
 type LineRow = {
   receipt_id: number;
   name: string;
@@ -21,7 +21,8 @@ async function databaseReady(db: SQLite.SQLiteDatabase): Promise<void> {
     );
     CREATE TABLE IF NOT EXISTS receipt (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      date TEXT NOT NULL
+      date TEXT NOT NULL,
+      shot TEXT
     );
     CREATE TABLE IF NOT EXISTS line (
       receipt_id INTEGER NOT NULL,
@@ -33,6 +34,10 @@ async function databaseReady(db: SQLite.SQLiteDatabase): Promise<void> {
       FOREIGN KEY (receipt_id) REFERENCES receipt(id) ON DELETE CASCADE
     );
   `);
+  const columns = await db.getAllAsync<{ name: string }>("PRAGMA table_info(receipt)");
+  if (!columns.some((column) => column.name === "shot")) {
+    await db.execAsync("ALTER TABLE receipt ADD COLUMN shot TEXT");
+  }
 }
 
 function cents(amount: number): number {
@@ -48,7 +53,11 @@ async function writeLedger(ledger: Ledger): Promise<void> {
       await db.runAsync("INSERT INTO category (position, name) VALUES (?, ?)", position, name);
     }
     for (const receipt of ledger.receipts) {
-      const inserted = await db.runAsync("INSERT INTO receipt (date) VALUES (?)", receipt.date);
+      const inserted = await db.runAsync(
+        "INSERT INTO receipt (date, shot) VALUES (?, ?)",
+        receipt.date,
+        receipt.shot,
+      );
       for (const [position, line] of receipt.lines.entries()) {
         await db.runAsync(
           "INSERT INTO line (receipt_id, position, name, amount_cents, category) VALUES (?, ?, ?, ?, ?)",
@@ -85,7 +94,9 @@ export async function loadLedger(): Promise<Ledger> {
     await saveLedger(ledger);
     return ledger;
   }
-  const receipts = await db.getAllAsync<ReceiptRow>("SELECT id, date FROM receipt ORDER BY id");
+  const receipts = await db.getAllAsync<ReceiptRow>(
+    "SELECT id, date, shot FROM receipt ORDER BY id",
+  );
   const lines = await db.getAllAsync<LineRow>(
     "SELECT receipt_id, name, amount_cents, category FROM line ORDER BY receipt_id, position",
   );
@@ -93,6 +104,7 @@ export async function loadLedger(): Promise<Ledger> {
     categories: categories.map((row) => row.name),
     receipts: receipts.map((receipt) => ({
       date: receipt.date,
+      shot: receipt.shot,
       lines: lines
         .filter((line) => line.receipt_id === receipt.id)
         .map((line) => ({

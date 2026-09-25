@@ -42,6 +42,7 @@ export type ReceiptLine = {
 export type Receipt = {
   date: string;
   lines: readonly ReceiptLine[];
+  shot: string | null;
 };
 
 export type Ledger = {
@@ -123,10 +124,11 @@ export type Tape = {
   lines: TapeLine[];
   receiptTotal: number | null;
   receiptDiscount: number | null;
+  shot: string | null;
 };
 
 export function openTape(): Tape {
-  return { date: null, lines: [], receiptTotal: null, receiptDiscount: null };
+  return { date: null, lines: [], receiptTotal: null, receiptDiscount: null, shot: null };
 }
 
 function hintKey(name: string): string {
@@ -144,6 +146,7 @@ export type OpenedShot = {
 export function placeShot(
   ledger: Ledger,
   lines: readonly string[],
+  shot: string,
 ): Tape | ShotRefusal | OpenedShot {
   const receiptsInFrame = lines.filter((line) => hintKey(line) === "платежный документ").length;
   if (receiptsInFrame > 1) {
@@ -187,10 +190,13 @@ export function placeShot(
     }
     tape = addLine(tape, { name, sale });
   }
-  const hinted = applyHint(
-    ledger,
-    setReconciliation(setReceiptDate(tape, date), { receiptTotal, receiptDiscount }),
-  );
+  const hinted = {
+    ...applyHint(
+      ledger,
+      setReconciliation(setReceiptDate(tape, date), { receiptTotal, receiptDiscount }),
+    ),
+    shot,
+  };
   const shotDate = hinted.date;
   if (shotDate !== null) {
     const candidate = hinted.lines.map((line) => ({
@@ -338,7 +344,10 @@ export function confirmTape(ledger: Ledger, tape: Tape): Ledger | ConfirmRefusal
   if (existing) {
     return ledger;
   }
-  return { ...ledger, receipts: [...ledger.receipts, { date, lines }] };
+  return {
+    ...ledger,
+    receipts: [...ledger.receipts, { date, lines, shot: tape.shot }],
+  };
 }
 
 export type LineCorrection = {

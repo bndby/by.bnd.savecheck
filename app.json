@@ -24,7 +24,18 @@
     },
     "plugins": [
       "expo-router",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-dev-client",
+      "./modules/receipt-recognition/app.plugin.js",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Камера нужна, чтобы снять чек.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": false
+        }
+      ]
     ]
   }
 }

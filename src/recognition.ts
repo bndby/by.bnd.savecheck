@@ -13,14 +13,26 @@ export type FrameReaders = {
   tesseract: (file: string, models: readonly ["rus", "bel"]) => readonly string[];
 };
 
+export type FramePlan =
+  | { engine: "vision"; language: "ru-RU" | null; mode: "accurate" }
+  | { engine: "tesseract"; models: readonly ["rus", "bel"] };
+
+export function planFrame(source: FrameSource): FramePlan {
+  if (source.platform === "android") {
+    return { engine: "tesseract", models: ["rus", "bel"] };
+  }
+  const language = source.supportedLanguages.includes("ru-RU") ? "ru-RU" : null;
+  return { engine: "vision", language, mode: "accurate" };
+}
+
 export function readFrame(
   file: string,
   source: FrameSource,
   readers: FrameReaders,
 ): readonly string[] {
-  if (source.platform === "android") {
-    return readers.tesseract(file, ["rus", "bel"]);
+  const plan = planFrame(source);
+  if (plan.engine === "tesseract") {
+    return readers.tesseract(file, plan.models);
   }
-  const language = source.supportedLanguages.includes("ru-RU") ? "ru-RU" : null;
-  return readers.vision(file, { language, mode: "accurate" });
+  return readers.vision(file, { language: plan.language, mode: plan.mode });
 }
