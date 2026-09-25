@@ -8,9 +8,11 @@
     "scheme": "savecheck",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "by.bnd.savecheck"
     },
     "android": {
+      "package": "by.bnd.savecheck",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

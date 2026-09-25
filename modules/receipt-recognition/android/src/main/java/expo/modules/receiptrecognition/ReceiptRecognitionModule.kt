@@ -25,7 +25,7 @@ class ReceiptRecognitionModule : Module() {
       emptyList<String>()
     }
 
-    AsyncFunction("readVision") { _: String, _: String? ->
+    AsyncFunction<List<String>, String, String?>("readVision") { _, _ ->
       throw ReadFailed("Vision читает кадр на iOS")
     }
 
