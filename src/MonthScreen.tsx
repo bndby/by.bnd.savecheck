@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Button, Text } from "react-native-paper";
-import { CalendarMonth, createLedger, openMonth } from "./ledger";
+import { CalendarMonth, Ledger, openMonth } from "./ledger";
 
 const monthNames = [
   "январь",
@@ -28,9 +28,14 @@ function shiftMonth(month: CalendarMonth, step: -1 | 1): CalendarMonth {
   return { year: Math.floor(index / 12), month: (index % 12) + 1 };
 }
 
-export function MonthScreen() {
+export function MonthScreen({
+  ledger,
+  onWrite,
+}: {
+  ledger: Ledger;
+  onWrite: () => void;
+}) {
   const current = today();
-  const ledger = createLedger();
   const [month, setMonth] = useState(current);
   const opened = openMonth(ledger, current, month);
   const next = shiftMonth(month, 1);
@@ -51,6 +56,9 @@ export function MonthScreen() {
           {line.name} {line.amount}
         </Text>
       ))}
+      <Button mode="contained" onPress={onWrite}>
+        Вписать чек
+      </Button>
       <View style={styles.moves}>
         <Button onPress={() => setMonth(shiftMonth(month, -1))}>Прошлый месяц</Button>
         <Button disabled={!canGoForward} onPress={() => setMonth(next)}>
