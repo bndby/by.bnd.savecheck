@@ -126,7 +126,7 @@ export function ReceiptScreen({
             onPress={() => {
               const amount = parseAmount(amounts[index] ?? line.amount.toFixed(2));
               if (amount === null) {
-                setMessage(confirmRefusalText["missing-sale"]);
+                setMessage("Нет суммы");
                 return;
               }
               const result = correctLine(ledger, receiptIndex, index, {
@@ -140,7 +140,7 @@ export function ReceiptScreen({
               void change(result, false);
             }}
           >
-            Сохранить строку
+            Сохранить позицию
           </Button>
           <Button
             disabled={saving}
