@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { Button, Text } from "react-native-paper";
-import { CalendarMonth, Ledger, openMonth } from "./ledger";
+import { CalendarMonth, Ledger, listMonthReceipts, openMonth } from "./ledger";
 
 const monthNames = [
   "январь",
@@ -28,12 +28,20 @@ function shiftMonth(month: CalendarMonth, step: -1 | 1): CalendarMonth {
   return { year: Math.floor(index / 12), month: (index % 12) + 1 };
 }
 
+function byn(amount: number): string {
+  return amount.toFixed(2);
+}
+
 export function MonthScreen({
   ledger,
   onWrite,
+  onCategories,
+  onOpenReceipt,
 }: {
   ledger: Ledger;
   onWrite: () => void;
+  onCategories: () => void;
+  onOpenReceipt: (index: number) => void;
 }) {
   const current = today();
   const [month, setMonth] = useState(current);
@@ -45,19 +53,29 @@ export function MonthScreen({
     return null;
   }
 
+  const receipts = listMonthReceipts(ledger, month);
+
   return (
-    <View style={styles.screen}>
+    <ScrollView contentContainerStyle={styles.screen}>
       <Text variant="headlineSmall">
         {monthNames[month.month - 1]} {month.year}
       </Text>
-      <Text variant="titleLarge">Итог {opened.total}</Text>
+      <Text variant="titleLarge">Итог {byn(opened.total)}</Text>
       {opened.categories.map((line) => (
         <Text key={line.name}>
-          {line.name} {line.amount}
+          {line.name} {byn(line.amount)}
         </Text>
+      ))}
+      {receipts.map((receipt) => (
+        <Button key={receipt.index} onPress={() => onOpenReceipt(receipt.index)}>
+          {receipt.date} {byn(receipt.total)}
+        </Button>
       ))}
       <Button mode="contained" onPress={onWrite}>
         Вписать чек
+      </Button>
+      <Button mode="outlined" onPress={onCategories}>
+        Категории
       </Button>
       <View style={styles.moves}>
         <Button onPress={() => setMonth(shiftMonth(month, -1))}>Прошлый месяц</Button>
@@ -65,13 +83,12 @@ export function MonthScreen({
           Следующий месяц
         </Button>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
     padding: 24,
     gap: 12,
   },

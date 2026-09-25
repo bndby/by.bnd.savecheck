@@ -8,6 +8,7 @@ import {
   createLedger,
   editLine,
   listCategories,
+  listMonthReceipts,
   listReceipts,
   listSpends,
   openMonth,
@@ -36,6 +37,42 @@ test("будущий месяц не открывается", () => {
 test("прошлый месяц открывается с итогом 0", () => {
   const opened = openMonth(createLedger(), september, { year: 2026, month: 8 });
   expect(opened).toEqual({ total: 0, categories: [] });
+});
+
+test("месяц перечисляет чеки своей даты", () => {
+  const august = confirmTape(
+    createLedger(),
+    addLine(
+      addLine(setReceiptDate(openTape(), "2026-08-15"), {
+        name: "Молоко",
+        sale: 3,
+        category: "продукты",
+      }),
+      { name: "Бинт", sale: 2, category: "аптека" },
+    ),
+  );
+  if ("refusal" in august) {
+    throw new Error(august.refusal);
+  }
+  const both = confirmTape(
+    august,
+    addLine(setReceiptDate(openTape(), "2026-09-02"), {
+      name: "Хлеб",
+      sale: 1.5,
+      category: "продукты",
+    }),
+  );
+  if ("refusal" in both) {
+    throw new Error(both.refusal);
+  }
+
+  expect(listMonthReceipts(both, { year: 2026, month: 8 })).toEqual([
+    { index: 0, date: "2026-08-15", total: 5 },
+  ]);
+  expect(listMonthReceipts(both, september)).toEqual([
+    { index: 1, date: "2026-09-02", total: 1.5 },
+  ]);
+  expect(listMonthReceipts(both, { year: 2026, month: 7 })).toEqual([]);
 });
 
 test("в учёте есть стартовые категории", () => {

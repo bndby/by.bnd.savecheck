@@ -434,6 +434,27 @@ function sameMonth(date: string, month: CalendarMonth): boolean {
   return Number(year) === month.year && Number(monthNumber) === month.month;
 }
 
+export type MonthReceipt = {
+  index: number;
+  date: string;
+  total: number;
+};
+
+export function listMonthReceipts(ledger: Ledger, month: CalendarMonth): readonly MonthReceipt[] {
+  return ledger.receipts.flatMap((receipt, index) => {
+    if (!sameMonth(receipt.date, month)) {
+      return [];
+    }
+    return [
+      {
+        index,
+        date: receipt.date,
+        total: receipt.lines.reduce((sum, line) => sum + cents(line.amount), 0) / 100,
+      },
+    ];
+  });
+}
+
 export function openMonth(
   ledger: Ledger,
   today: CalendarMonth,

@@ -2,7 +2,6 @@ import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Button, Text, TextInput } from "react-native-paper";
 import {
-  ConfirmRefusal,
   Ledger,
   addLine,
   applyHint,
@@ -12,6 +11,7 @@ import {
   setReceiptDate,
   setReconciliation,
 } from "./ledger";
+import { confirmRefusalText, saveFailedText } from "./refusalText";
 
 type DraftLine = {
   name: string;
@@ -20,15 +20,6 @@ type DraftLine = {
   surcharge: string;
   currency: string;
   category: string | null;
-};
-
-const refusalText: Record<ConfirmRefusal["refusal"], string> = {
-  "missing-date": "Нет даты чека",
-  "missing-name": "Нет названия",
-  "missing-sale": "Нет суммы продажи",
-  "negative-amount": "Сумма меньше нуля",
-  "not-byn": "Не BYN",
-  "missing-category": "Нет категории",
 };
 
 function emptyLine(): DraftLine {
@@ -97,7 +88,7 @@ export function TapeScreen({
 }: {
   ledger: Ledger;
   onLeave: () => void;
-  onConfirmed: (ledger: Ledger) => void;
+  onConfirmed: (ledger: Ledger) => void | Promise<void>;
 }) {
   const [draft, setDraft] = useState<Draft>({
     date: "",
@@ -105,7 +96,8 @@ export function TapeScreen({
     receiptTotal: "",
     receiptDiscount: "",
   });
-  const [refusal, setRefusal] = useState<ConfirmRefusal["refusal"] | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const tape = projectTape(
     ledger,
     draft.date,
@@ -204,17 +196,21 @@ export function TapeScreen({
       >
         Добавить позицию
       </Button>
-      {refusal ? <Text>{refusalText[refusal]}</Text> : null}
+      {refusal ? <Text>{refusal}</Text> : null}
       <Button
         mode="contained"
-        disabled={draft.lines.length === 0}
+        disabled={draft.lines.length === 0 || saving}
         onPress={() => {
           const result = confirmTape(ledger, tape);
           if ("refusal" in result) {
-            setRefusal(result.refusal);
+            setRefusal(confirmRefusalText[result.refusal]);
             return;
           }
-          onConfirmed(result);
+          setSaving(true);
+          void Promise.resolve(onConfirmed(result)).catch(() => {
+            setRefusal(saveFailedText);
+            setSaving(false);
+          });
         }}
       >
         Подтвердить
