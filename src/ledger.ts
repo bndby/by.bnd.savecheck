@@ -76,6 +76,24 @@ export function openTape(): Tape {
   return { date: null, lines: [], receiptTotal: null, receiptDiscount: null };
 }
 
+function hintKey(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+export function applyHint(ledger: Ledger, tape: Tape): Tape {
+  return {
+    ...tape,
+    lines: tape.lines.map((line) => {
+      if (line.category !== null) {
+        return line;
+      }
+      const key = hintKey(line.name);
+      const match = [...ledger.spends].reverse().find((spend) => hintKey(spend.name) === key);
+      return { ...line, category: match?.category ?? "прочее" };
+    }),
+  };
+}
+
 function toLine(input: LineInput, previous?: TapeLine): TapeLine {
   const sale = input.sale !== undefined ? input.sale : (previous?.sale ?? null);
   const discount = input.discount ?? previous?.discount ?? 0;

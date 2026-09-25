@@ -1,5 +1,6 @@
 import {
   addLine,
+  applyHint,
   confirmTape,
   createLedger,
   editLine,
@@ -232,6 +233,130 @@ test("одно подтверждение делает все позиции т�
     ],
   });
   expect(openMonth(result, september, september)).toEqual({ total: 0, categories: [] });
+});
+
+test("подсказка берёт категорию последней траты с тем же названием", () => {
+  const earlier = confirmTape(
+    createLedger(),
+    addLine(setReceiptDate(openTape(), "2026-09-01"), {
+      name: "Молоко",
+      sale: 2,
+      category: "продукты",
+    }),
+  );
+  if ("refusal" in earlier) {
+    throw new Error(earlier.refusal);
+  }
+
+  const ledger = confirmTape(
+    earlier,
+    addLine(setReceiptDate(openTape(), "2026-09-03"), {
+      name: "Молоко",
+      sale: 2.5,
+      category: "дом",
+    }),
+  );
+  if ("refusal" in ledger) {
+    throw new Error(ledger.refusal);
+  }
+
+  const tape = applyHint(ledger, addLine(openTape(), { name: "Молоко", sale: 3 }));
+
+  expect(tape.lines[0].category).toBe("дом");
+});
+
+test("краевые пробелы, повторные пробелы и регистр не меняют подсказку", () => {
+  const ledger = confirmTape(
+    createLedger(),
+    addLine(setReceiptDate(openTape(), "2026-09-01"), {
+      name: "Молоко пастеризованное",
+      sale: 2,
+      category: "аптека",
+    }),
+  );
+  if ("refusal" in ledger) {
+    throw new Error(ledger.refusal);
+  }
+
+  const tape = applyHint(
+    ledger,
+    addLine(
+      addLine(addLine(openTape(), { name: "  молоко пастеризованное", sale: 1 }), {
+        name: "МОЛОКО   ПАСТЕРИЗОВАННОЕ  ",
+        sale: 1,
+      }),
+      { name: "Молоко  пастеризованное", sale: 1 },
+    ),
+  );
+
+  expect(tape.lines.map((line) => line.category)).toEqual(["аптека", "аптека", "аптека"]);
+});
+
+test("«е» и «ё», знаки и лишние слова оставляют название другим", () => {
+  const ledger = confirmTape(
+    createLedger(),
+    addLine(setReceiptDate(openTape(), "2026-09-01"), {
+      name: "Молоко",
+      sale: 2,
+      category: "продукты",
+    }),
+  );
+  if ("refusal" in ledger) {
+    throw new Error(ledger.refusal);
+  }
+
+  const tape = applyHint(
+    ledger,
+    addLine(
+      addLine(addLine(openTape(), { name: "Молёко", sale: 1 }), {
+        name: "Молоко!",
+        sale: 1,
+      }),
+      { name: "Молоко 1л", sale: 1 },
+    ),
+  );
+
+  expect(tape.lines.map((line) => line.category)).toEqual(["прочее", "прочее", "прочее"]);
+});
+
+test("без прошлой траты подсказка — прочее", () => {
+  const tape = applyHint(createLedger(), addLine(openTape(), { name: "Сыр", sale: 4 }));
+
+  expect(tape.lines[0].category).toBe("прочее");
+});
+
+test("категорию можно сменить до подтверждения", () => {
+  const ledger = confirmTape(
+    createLedger(),
+    addLine(setReceiptDate(openTape(), "2026-09-01"), {
+      name: "Молоко",
+      sale: 2,
+      category: "продукты",
+    }),
+  );
+  if ("refusal" in ledger) {
+    throw new Error(ledger.refusal);
+  }
+
+  const tape = applyHint(
+    ledger,
+    addLine(setReceiptDate(openTape(), "2026-09-04"), {
+      name: "Молоко",
+      sale: 3,
+      category: "кафе",
+    }),
+  );
+
+  const result = confirmTape(ledger, tape);
+  if ("refusal" in result) {
+    throw new Error(result.refusal);
+  }
+
+  expect(tape.lines[0].category).toBe("кафе");
+  expect(listSpends(result)).toEqual([
+    { name: "Молоко", amount: 2, category: "продукты", date: "2026-09-01" },
+    { name: "Молоко", amount: 3, category: "кафе", date: "2026-09-04" },
+  ]);
 });
 
 test("неподтверждённая лента не попадает в месяц", () => {

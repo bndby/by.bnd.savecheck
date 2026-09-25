@@ -5,6 +5,7 @@ import {
   ConfirmRefusal,
   Ledger,
   addLine,
+  applyHint,
   confirmTape,
   listCategories,
   openTape,
@@ -51,6 +52,7 @@ function parseAmount(text: string): number | null {
 }
 
 function projectTape(
+  ledger: Ledger,
   date: string,
   lines: DraftLine[],
   receiptTotal: string,
@@ -68,10 +70,13 @@ function projectTape(
       }),
     setReceiptDate(openTape(), date.trim() === "" ? null : date.trim()),
   );
-  return setReconciliation(withLines, {
-    receiptTotal: parseAmount(receiptTotal),
-    receiptDiscount: parseAmount(receiptDiscount),
-  });
+  return applyHint(
+    ledger,
+    setReconciliation(withLines, {
+      receiptTotal: parseAmount(receiptTotal),
+      receiptDiscount: parseAmount(receiptDiscount),
+    }),
+  );
 }
 
 type Draft = {
@@ -101,7 +106,13 @@ export function TapeScreen({
     receiptDiscount: "",
   });
   const [refusal, setRefusal] = useState<ConfirmRefusal["refusal"] | null>(null);
-  const tape = projectTape(draft.date, draft.lines, draft.receiptTotal, draft.receiptDiscount);
+  const tape = projectTape(
+    ledger,
+    draft.date,
+    draft.lines,
+    draft.receiptTotal,
+    draft.receiptDiscount,
+  );
   const categories = listCategories(ledger);
   const positionSum =
     tape.lines.reduce((sum, line) => sum + Math.round((line.amount ?? 0) * 100), 0) / 100;
@@ -178,7 +189,7 @@ export function TapeScreen({
             {categories.map((category) => (
               <Button
                 key={category}
-                mode={draft.lines[index].category === category ? "contained" : "outlined"}
+                mode={line.category === category ? "contained" : "outlined"}
                 onPress={() => edit(index, { category })}
               >
                 {category}
