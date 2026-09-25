@@ -133,6 +133,79 @@ function hintKey(name: string): string {
   return name.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+export type ShotRefusal = {
+  refusal: "several-receipts";
+};
+
+export type OpenedShot = {
+  opened: Receipt;
+};
+
+export function placeShot(
+  ledger: Ledger,
+  lines: readonly string[],
+): Tape | ShotRefusal | OpenedShot {
+  const receiptsInFrame = lines.filter((line) => hintKey(line) === "платежный документ").length;
+  if (receiptsInFrame > 1) {
+    return { refusal: "several-receipts" };
+  }
+  let date: string | null = null;
+  let receiptTotal: number | null = null;
+  let receiptDiscount: number | null = null;
+  let tape = openTape();
+  for (const raw of lines) {
+    const text = raw.trim();
+    const dated = /^(\d{2})\.(\d{2})\.(\d{4})/.exec(text);
+    if (dated) {
+      date = `${dated[3]}-${dated[2]}-${dated[1]}`;
+      continue;
+    }
+    const position = /^(.*\S)\s+(\d+[.,]\d{2})$/.exec(text);
+    if (!position) {
+      continue;
+    }
+    const name = position[1];
+    const sale = Number(position[2].replace(",", "."));
+    const key = hintKey(name);
+    if (key === "итого к оплате" || key === "итого") {
+      if (key === "итого к оплате" || receiptTotal === null) {
+        receiptTotal = sale;
+      }
+      continue;
+    }
+    if (key === "скидка на итог") {
+      receiptDiscount = sale;
+      continue;
+    }
+    if (key === "скидка" && tape.lines.length > 0) {
+      tape = editLine(tape, tape.lines.length - 1, { discount: sale });
+      continue;
+    }
+    if (key === "надбавка" && tape.lines.length > 0) {
+      tape = editLine(tape, tape.lines.length - 1, { surcharge: sale });
+      continue;
+    }
+    tape = addLine(tape, { name, sale });
+  }
+  const hinted = applyHint(
+    ledger,
+    setReconciliation(setReceiptDate(tape, date), { receiptTotal, receiptDiscount }),
+  );
+  const shotDate = hinted.date;
+  if (shotDate !== null) {
+    const candidate = hinted.lines.map((line) => ({
+      name: line.name,
+      amount: line.amount ?? 0,
+      category: line.category ?? "",
+    }));
+    const existing = ledger.receipts.find((receipt) => sameReceipt(receipt, shotDate, candidate));
+    if (existing) {
+      return { opened: existing };
+    }
+  }
+  return hinted;
+}
+
 export function applyHint(ledger: Ledger, tape: Tape): Tape {
   return {
     ...tape,

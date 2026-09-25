@@ -12,6 +12,7 @@ import {
   listSpends,
   openMonth,
   openTape,
+  placeShot,
   removeCategory,
   removeLine,
   removeReceipt,
@@ -1006,4 +1007,126 @@ test("неподтверждённая лента не попадает в ме�
   });
 
   expect(openMonth(ledger, september, september)).toEqual({ total: 0, categories: [] });
+});
+
+test("один кадр кладёт строки на ленту", () => {
+  const shot = placeShot(createLedger(), [
+    "Платежный документ",
+    "Молоко 3,20",
+    "Хлеб 2,10",
+    "25.09.2026 14:32",
+  ]);
+  if ("refusal" in shot || "opened" in shot) {
+    throw new Error("opened" in shot ? "opened" : shot.refusal);
+  }
+
+  expect(shot.date).toBe("2026-09-25");
+  expect(shot.lines.map((line) => ({ name: line.name, sale: line.sale, amount: line.amount, category: line.category }))).toEqual([
+    { name: "Молоко", sale: 3.2, amount: 3.2, category: "прочее" },
+    { name: "Хлеб", sale: 2.1, amount: 2.1, category: "прочее" },
+  ]);
+});
+
+test("пустой разбор оставляет пустую ленту", () => {
+  const shot = placeShot(createLedger(), ["Платежный документ", "УНП 190000000"]);
+  if ("refusal" in shot || "opened" in shot) {
+    throw new Error("opened" in shot ? "opened" : shot.refusal);
+  }
+
+  expect(shot.lines).toEqual([]);
+  expect(addLine(shot, { name: "Молоко", sale: 3.2, category: "продукты" }).lines.map((line) => line.name)).toEqual([
+    "Молоко",
+  ]);
+});
+
+test("несколько чеков в кадре просят переснять, лента собирается заново", () => {
+  const ledger = createLedger();
+  const mixed = placeShot(ledger, [
+    "Платежный документ",
+    "Молоко 3,20",
+    "Платежный документ",
+    "Хлеб 2,10",
+  ]);
+
+  expect(mixed).toEqual({ refusal: "several-receipts" });
+
+  const again = placeShot(ledger, ["Платежный документ", "Хлеб 2,10", "25.09.2026"]);
+  if ("refusal" in again || "opened" in again) {
+    throw new Error("opened" in again ? "opened" : again.refusal);
+  }
+
+  expect(again.lines.map((line) => ({ name: line.name, sale: line.sale }))).toEqual([
+    { name: "Хлеб", sale: 2.1 },
+  ]);
+});
+
+test("повторный снимок того же чека открывает уже подтверждённый чек", () => {
+  const confirmed = confirmTape(
+    createLedger(),
+    addLine(
+      addLine(setReceiptDate(openTape(), "2026-09-25"), {
+        name: "Молоко",
+        sale: 3.2,
+        category: "продукты",
+      }),
+      { name: "Хлеб", sale: 2.1, category: "продукты" },
+    ),
+  );
+  if ("refusal" in confirmed) {
+    throw new Error(confirmed.refusal);
+  }
+
+  const shot = placeShot(confirmed, [
+    "Платежный документ",
+    "  хлеб  2,10",
+    "МОЛОКО 3,20",
+    "25.09.2026",
+  ]);
+
+  expect(shot).toEqual({ opened: listReceipts(confirmed)[0] });
+  expect(listSpends(confirmed)).toEqual([
+    { name: "Молоко", amount: 3.2, category: "продукты", date: "2026-09-25" },
+    { name: "Хлеб", amount: 2.1, category: "продукты", date: "2026-09-25" },
+  ]);
+});
+
+test("итог чека и скидка на чек остаются сверкой", () => {
+  const shot = placeShot(createLedger(), [
+    "Молоко 3,20",
+    "Хлеб 2,10",
+    "ИТОГО 5,30",
+    "СКИДКА НА ИТОГ 0,50",
+    "ИТОГО К ОПЛАТЕ 4,80",
+    "25.09.2026",
+  ]);
+  if ("refusal" in shot || "opened" in shot) {
+    throw new Error("opened" in shot ? "opened" : shot.refusal);
+  }
+
+  expect(shot.lines.map((line) => line.name)).toEqual(["Молоко", "Хлеб"]);
+  expect(shot.receiptTotal).toBe(4.8);
+  expect(shot.receiptDiscount).toBe(0.5);
+  expect(shot.lines.map((line) => line.amount)).toEqual([3.2, 2.1]);
+});
+
+test("скидка и надбавка строки входят в сумму позиции", () => {
+  const shot = placeShot(createLedger(), [
+    "Молоко 3,20",
+    "Скидка 0,20",
+    "Надбавка 0,10",
+    "25.09.2026",
+  ]);
+  if ("refusal" in shot || "opened" in shot) {
+    throw new Error("opened" in shot ? "opened" : shot.refusal);
+  }
+
+  expect(shot.lines).toEqual([
+    expect.objectContaining({
+      name: "Молоко",
+      sale: 3.2,
+      discount: 0.2,
+      surcharge: 0.1,
+      amount: 3.1,
+    }),
+  ]);
 });
